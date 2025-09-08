@@ -1,6 +1,6 @@
 from flask import Flask, request, send_file, jsonify
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 import json
 import io
 import os
@@ -75,54 +75,133 @@ def create_sheet(wb, sheet_name, data):
     
     ws = wb.create_sheet(title=safe_name)
     
+    # 定义样式
+    # 表头样式：深蓝底 + 白字 + 加粗
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # 边框样式：细边框
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # 数据行样式：垂直居中，文本自动换行
+    data_alignment = Alignment(vertical="center", wrap_text=True)
+    
+    # 斑马条纹样式
+    zebra_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    
     if isinstance(data, list) and len(data) > 0:
         # 如果是列表，第一行作为表头
         if isinstance(data[0], dict):
             headers = list(data[0].keys())
+            
             # 写入表头
             for col, header in enumerate(headers, 1):
                 cell = ws.cell(row=1, column=col, value=header)
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-                cell.alignment = Alignment(horizontal="center")
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = thin_border
+            
+            # 设置表头行高
+            ws.row_dimensions[1].height = 22
             
             # 写入数据
             for row, row_data in enumerate(data, 2):
+                # 斑马条纹：偶数行添加浅灰背景
+                row_fill = zebra_fill if row % 2 == 0 else None
+                
                 for col, header in enumerate(headers, 1):
-                    value = row_data.get(header, "")
-                    ws.cell(row=row, column=col, value=value)
+                    cell = ws.cell(row=row, column=col, value=row_data.get(header, ""))
+                    cell.alignment = data_alignment
+                    cell.border = thin_border
+                    if row_fill:
+                        cell.fill = row_fill
         else:
             # 如果是简单列表，直接写入
             for row, value in enumerate(data, 1):
-                ws.cell(row=row, column=1, value=value)
+                cell = ws.cell(row=row, column=1, value=value)
+                cell.alignment = data_alignment
+                cell.border = thin_border
+                # 斑马条纹
+                if row % 2 == 0:
+                    cell.fill = zebra_fill
     elif isinstance(data, dict):
         # 如果是字典，创建键值对格式
         headers = ["Key", "Value"]
+        
+        # 写入表头
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-            cell.alignment = Alignment(horizontal="center")
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
         
+        # 设置表头行高
+        ws.row_dimensions[1].height = 22
+        
+        # 写入数据
         for row, (key, value) in enumerate(data.items(), 2):
-            ws.cell(row=row, column=1, value=key)
-            ws.cell(row=row, column=2, value=value)
+            # 斑马条纹
+            row_fill = zebra_fill if row % 2 == 0 else None
+            
+            # Key列
+            key_cell = ws.cell(row=row, column=1, value=key)
+            key_cell.alignment = data_alignment
+            key_cell.border = thin_border
+            if row_fill:
+                key_cell.fill = row_fill
+            
+            # Value列
+            value_cell = ws.cell(row=row, column=2, value=value)
+            value_cell.alignment = data_alignment
+            value_cell.border = thin_border
+            if row_fill:
+                value_cell.fill = row_fill
     else:
         # 单个值
-        ws.cell(row=1, column=1, value="Value")
-        ws.cell(row=2, column=1, value=data)
+        # 表头
+        header_cell = ws.cell(row=1, column=1, value="Value")
+        header_cell.font = header_font
+        header_cell.fill = header_fill
+        header_cell.alignment = header_alignment
+        header_cell.border = thin_border
+        ws.row_dimensions[1].height = 22
+        
+        # 数据
+        data_cell = ws.cell(row=2, column=1, value=data)
+        data_cell.alignment = data_alignment
+        data_cell.border = thin_border
     
-    # 自动调整列宽
+    # 智能列宽调整：根据中英文宽度估算
     for column in ws.columns:
         max_length = 0
         column_letter = column[0].column_letter
+        
         for cell in column:
             try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
+                cell_value = str(cell.value) if cell.value is not None else ""
+                # 计算字符宽度：中文字符算2个宽度，英文算1个宽度
+                width = 0
+                for char in cell_value:
+                    if ord(char) > 127:  # 中文字符
+                        width += 2
+                    else:  # 英文字符
+                        width += 1
+                
+                if width > max_length:
+                    max_length = width
             except:
                 pass
-        adjusted_width = min(max_length + 2, 50)
+        
+        # 列宽控制在8-40字符范围，并添加适当边距
+        adjusted_width = max(8, min(max_length + 3, 40))
         ws.column_dimensions[column_letter].width = adjusted_width
 
 def upload_to_s3(excel_bytes, filename):
