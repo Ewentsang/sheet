@@ -1,12 +1,13 @@
 # JSON to Excel 转换服务
 
-这是一个可部署的微服务，用于将JSON数据转换为多sheet的Excel文件。支持两种接口：直接返回二进制文件流或上传到S3/MinIO并返回下载URL。
+这是一个可部署的微服务，用于将JSON数据转换为多sheet的Excel文件，同时支持文件上传和重命名功能。支持多种接口：直接返回二进制文件流、上传到S3/MinIO并返回下载URL、以及文件复制重命名。
 
 ## 功能特性
 
 - 🚀 **快速转换**: 将JSON数据快速转换为Excel文件
 - 📊 **多Sheet支持**: 自动创建多个工作表，每个JSON键对应一个sheet
 - 🎨 **美观样式**: 自动应用表头样式、列宽调整等
+- 📁 **文件管理**: 支持文件上传、复制、重命名功能
 - ☁️ **云存储支持**: 支持AWS S3和MinIO对象存储
 - 🔗 **预签名URL**: 生成短期有效的下载链接
 - 🐳 **容器化部署**: 支持Docker和Docker Compose部署
@@ -60,8 +61,41 @@ curl -X POST http://localhost:5000/make-xlsx-url \
 }
 ```
 
-### 3. GET /health
+### 3. POST /copy-file
+上传文件并重命名，直接返回重命名后的文件。
+
+**请求示例:**
+```bash
+curl -X POST http://localhost:5000/copy-file \
+  -F "file=@your_file.xlsx" \
+  -F "new_filename=新年好.xlsx"
+```
+
+**响应:** 直接返回重命名后的文件流
+
+### 4. GET /health
 健康检查接口，用于监控服务状态。
+
+## 文件复制重命名功能
+
+### 支持的文件格式
+- Excel文件: `.xlsx`, `.xls`
+- 文本文件: `.csv`, `.txt`
+- 文档文件: `.pdf`, `.doc`, `.docx`
+
+### 使用说明
+1. **上传文件**: 通过form-data方式上传文件
+2. **指定新文件名**: 在`new_filename`参数中指定新的文件名
+3. **自动扩展名**: 如果新文件名没有扩展名，会自动添加原文件的扩展名
+4. **直接下载**: 接口直接返回重命名后的文件，无需额外下载步骤
+
+### 在Postman中使用
+1. 选择POST方法，URL: `http://localhost:5000/copy-file`
+2. 在Body中选择form-data
+3. 添加两个字段：
+   - `file`: 选择要上传的文件
+   - `new_filename`: 输入新的文件名（如"新年好.xlsx"）
+4. 点击Send，直接下载重命名后的文件
 
 ## 支持的JSON格式
 
@@ -171,6 +205,13 @@ docker run -p 5000:5000 \
 - 从响应中提取 `download_url`
 - 可以发送给用户或进行后续处理
 
+### 节点3: 文件重命名（可选）
+- **URL**: `http://your-service:5000/copy-file`
+- **Method**: `POST`
+- **Body**: form-data
+  - `file`: 上传的文件
+  - `new_filename`: 新的文件名
+
 ## 性能优化
 
 - 使用Gunicorn多进程部署
@@ -203,6 +244,11 @@ docker run -p 5000:5000 \
    - 检查MinIO服务状态
    - 验证存储桶权限
    - 查看服务日志
+
+4. **文件重命名问题**
+   - 确保文件名包含正确的扩展名
+   - 检查中文字符编码问题
+   - 验证文件格式是否支持
 
 ### 日志查看
 

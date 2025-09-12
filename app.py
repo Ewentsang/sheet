@@ -204,6 +204,51 @@ def create_sheet(wb, sheet_name, data):
         adjusted_width = max(8, min(max_length + 3, 40))
         ws.column_dimensions[column_letter].width = adjusted_width
 
+def copy_file_with_new_name(source_file_path, new_filename):
+    """
+    复制文件并重命名
+    
+    Args:
+        source_file_path (str): 源文件路径
+        new_filename (str): 新的文件名
+    
+    Returns:
+        str: 新文件的完整路径
+    
+    Raises:
+        FileNotFoundError: 源文件不存在
+        Exception: 复制过程中发生错误
+    """
+    try:
+        # 检查源文件是否存在
+        if not os.path.exists(source_file_path):
+            raise FileNotFoundError(f"源文件不存在: {source_file_path}")
+        
+        # 获取源文件所在目录
+        source_dir = os.path.dirname(source_file_path)
+        
+        # 构建新文件的完整路径
+        new_file_path = os.path.join(source_dir, new_filename)
+        
+        # 如果新文件已存在，先删除
+        if os.path.exists(new_file_path):
+            os.remove(new_file_path)
+            logger.info(f"已删除已存在的文件: {new_file_path}")
+        
+        # 复制文件
+        import shutil
+        shutil.copy2(source_file_path, new_file_path)
+        
+        logger.info(f"文件复制成功: {source_file_path} -> {new_file_path}")
+        return new_file_path
+        
+    except FileNotFoundError as e:
+        logger.error(f"文件不存在错误: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"文件复制错误: {e}")
+        raise Exception(f"文件复制失败: {str(e)}")
+
 def upload_to_s3(excel_bytes, filename):
     """上传Excel文件到S3/MinIO"""
     try:
@@ -336,6 +381,103 @@ def make_xlsx_url():
     except Exception as e:
         logger.error(f"生成Excel URL错误: {e}")
         return jsonify({"error": f"生成Excel URL失败: {str(e)}"}), 500
+
+@app.route('/copy-file', methods=['POST'])
+def copy_file():
+    """上传文件并重命名，直接返回重命名后的文件"""
+    try:
+        logger.info("收到文件上传请求")
+        
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            logger.error("没有上传文件")
+            return jsonify({"error": "没有上传文件"}), 400
+        
+        uploaded_file = request.files['file']
+        logger.info(f"上传文件: {uploaded_file.filename}")
+        
+        # 检查文件名是否为空
+        if uploaded_file.filename == '':
+            logger.error("没有选择文件")
+            return jsonify({"error": "没有选择文件"}), 400
+        
+        # 获取新文件名
+        new_filename = request.form.get('new_filename')
+        logger.info(f"新文件名: {new_filename}")
+        
+        if not new_filename:
+            logger.error("缺少参数: new_filename")
+            return jsonify({"error": "缺少参数: new_filename"}), 400
+        
+        # 确保新文件名有扩展名
+        if not new_filename.endswith(('.xlsx', '.xls', '.csv', '.txt', '.pdf', '.doc', '.docx')):
+            # 如果没有扩展名，使用原文件的扩展名
+            original_ext = os.path.splitext(uploaded_file.filename)[1]
+            new_filename = new_filename + original_ext
+            logger.info(f"添加扩展名后的文件名: {new_filename}")
+        
+        # 保存上传的文件到临时位置
+        temp_dir = "temp_uploads"
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        
+        temp_file_path = os.path.join(temp_dir, uploaded_file.filename)
+        uploaded_file.save(temp_file_path)
+        logger.info(f"文件保存到临时位置: {temp_file_path}")
+        
+        new_file_path = None
+        try:
+            # 调用复制函数
+            new_file_path = copy_file_with_new_name(temp_file_path, new_filename)
+            logger.info(f"文件复制成功: {new_file_path}")
+            
+            # 直接返回文件，就像 make_xlsx_bytes 一样
+            # 使用 Response 对象和 after_request 来延迟清理
+            response = send_file(
+                new_file_path,
+                as_attachment=True,
+                download_name=new_filename
+            )
+            
+            # 在响应完成后清理文件
+            def cleanup_after_response():
+                try:
+                    # 清理临时文件
+                    if os.path.exists(temp_file_path):
+                        os.remove(temp_file_path)
+                        logger.info(f"已清理临时文件: {temp_file_path}")
+                    
+                    # 清理复制后的文件
+                    if new_file_path and os.path.exists(new_file_path):
+                        os.remove(new_file_path)
+                        logger.info(f"已清理复制文件: {new_file_path}")
+                except Exception as e:
+                    logger.warning(f"清理文件时出现警告: {e}")
+            
+            # 将清理函数附加到响应对象
+            response.call_on_close(cleanup_after_response)
+            return response
+            
+        except Exception as e:
+            # 如果出现异常，立即清理文件
+            try:
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+                    logger.info(f"异常时清理临时文件: {temp_file_path}")
+                
+                if new_file_path and os.path.exists(new_file_path):
+                    os.remove(new_file_path)
+                    logger.info(f"异常时清理复制文件: {new_file_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"异常清理文件时出现警告: {cleanup_error}")
+            raise
+        
+    except FileNotFoundError as e:
+        logger.error(f"文件不存在错误: {e}")
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"文件上传错误: {e}")
+        return jsonify({"error": f"文件上传失败: {str(e)}"}), 500
 
 @app.errorhandler(404)
 def not_found(error):
