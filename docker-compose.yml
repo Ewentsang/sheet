@@ -4,7 +4,7 @@ services:
   excel-service:
     build: .
     ports:
-      - "5000:5000"
+      - "5015:5014"
     environment:
       - S3_BUCKET=excel-files
       - S3_REGION=us-east-1
@@ -13,8 +13,17 @@ services:
       - S3_ENDPOINT_URL=http://minio:9000
       - URL_EXPIRY_HOURS=24
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     restart: unless-stopped
+    volumes:
+      - temp_uploads:/app/temp_uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5014/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   minio:
     image: minio/minio:latest
@@ -28,6 +37,13 @@ services:
     volumes:
       - minio_data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
 
 volumes:
   minio_data:
+  temp_uploads:

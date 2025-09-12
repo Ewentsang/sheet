@@ -19,7 +19,7 @@
 
 **请求示例:**
 ```bash
-curl -X POST http://localhost:5000/make-xlsx-bytes \
+curl -X POST http://localhost:5014/make-xlsx-bytes \
   -H "Content-Type: application/json" \
   -d '{
     "用户数据": [
@@ -40,7 +40,7 @@ curl -X POST http://localhost:5000/make-xlsx-bytes \
 
 **请求示例:**
 ```bash
-curl -X POST http://localhost:5000/make-xlsx-url \
+curl -X POST http://localhost:5014/make-xlsx-url \
   -H "Content-Type: application/json" \
   -d '{
     "销售数据": [
@@ -66,7 +66,7 @@ curl -X POST http://localhost:5000/make-xlsx-url \
 
 **请求示例:**
 ```bash
-curl -X POST http://localhost:5000/copy-file \
+curl -X POST http://localhost:5014/copy-file \
   -F "file=@your_file.xlsx" \
   -F "new_filename=新年好.xlsx"
 ```
@@ -90,7 +90,7 @@ curl -X POST http://localhost:5000/copy-file \
 4. **直接下载**: 接口直接返回重命名后的文件，无需额外下载步骤
 
 ### 在Postman中使用
-1. 选择POST方法，URL: `http://localhost:5000/copy-file`
+1. 选择POST方法，URL: `http://localhost:5014/copy-file`
 2. 在Body中选择form-data
 3. 添加两个字段：
    - `file`: 选择要上传的文件
@@ -142,7 +142,7 @@ docker-compose up -d
 ```
 
 3. 访问服务
-- Excel服务: http://localhost:5000
+- Excel服务: http://localhost:5014
 - MinIO控制台: http://localhost:9001 (用户名/密码: minioadmin/minioadmin)
 
 ### 方式2: 直接运行
@@ -172,7 +172,7 @@ docker build -t excel-service .
 
 2. 运行容器
 ```bash
-docker run -p 5000:5000 \
+docker run -p 5014:5014 \
   -e S3_BUCKET=your-bucket \
   -e S3_ACCESS_KEY=your-key \
   -e S3_SECRET_KEY=your-secret \
@@ -189,14 +189,14 @@ docker run -p 5000:5000 \
 | `S3_SECRET_KEY` | S3秘密密钥 | 必需 |
 | `S3_ENDPOINT_URL` | MinIO端点URL | 可选 |
 | `URL_EXPIRY_HOURS` | URL过期时间（小时） | `24` |
-| `PORT` | 服务端口 | `5000` |
+| `PORT` | 服务端口 | `5014` |
 
 ## 在Dify中使用
 
 在Dify的HTTP节点中调用此服务：
 
 ### 节点1: 生成Excel
-- **URL**: `http://your-service:5000/make-xlsx-url`
+- **URL**: `http://your-service:5014/make-xlsx-url`
 - **Method**: `POST`
 - **Headers**: `Content-Type: application/json`
 - **Body**: 你的JSON数据
@@ -206,7 +206,7 @@ docker run -p 5000:5000 \
 - 可以发送给用户或进行后续处理
 
 ### 节点3: 文件重命名（可选）
-- **URL**: `http://your-service:5000/copy-file`
+- **URL**: `http://your-service:5014/copy-file`
 - **Method**: `POST`
 - **Body**: form-data
   - `file`: 上传的文件
