@@ -68,6 +68,69 @@ def create_excel_from_json(data):
     
     return wb
 
+def detect_header_rows(data):
+    """
+    智能检测表头行数
+    通过分析数据模式来区分表头和数据行
+    """
+    if not data or len(data) < 2:
+        return min(1, len(data))
+    
+    # 方法1: 检测表头关键词（最可靠的方法）
+    # 如果某行包含明显的表头关键词，这一行是最后一行表头
+    for i, row in enumerate(data):
+        row_str = ' '.join(str(cell) for cell in row if cell)
+        if any(keyword in row_str.lower() for keyword in 
+               ['agent_name', 'status_num', 'percentage']):
+            return i + 1  # 这一行是表头，下一行开始是数据
+    
+    # 方法2: 检测第一列的数据类型模式
+    # 寻找第一个看起来像具体数据而不是表头的行
+    for i, row in enumerate(data):
+        if row and len(row) > 0:
+            first_cell = row[0]
+            if first_cell and isinstance(first_cell, str):
+                # 如果第一列开始出现人名（通常包含空格，且长度适中）
+                if (' ' in first_cell and 5 <= len(first_cell) <= 20 and 
+                    not any(keyword in first_cell.lower() for keyword in 
+                           ['broadcast', 'open', 'solved', 'expired', 'status', 'percentage'])):
+                    return max(1, i)
+    
+    # 方法3: 检测数值密度突然变化
+    numeric_density = []
+    for row in data:
+        if not row:
+            numeric_density.append(0)
+            continue
+        
+        numeric_count = 0
+        total_count = 0
+        for cell in row:
+            if cell and str(cell).strip():
+                total_count += 1
+                cell_str = str(cell).replace('%', '').replace(',', '')
+                try:
+                    float(cell_str)
+                    numeric_count += 1
+                except:
+                    pass
+        
+        density = numeric_count / total_count if total_count > 0 else 0
+        numeric_density.append(density)
+    
+    # 寻找数值密度突然增加的点
+    for i in range(1, len(numeric_density)):
+        if numeric_density[i] > numeric_density[i-1] + 0.2:  # 密度增加
+            return i
+    
+    # 方法4: 检测空行分隔
+    for i, row in enumerate(data):
+        if not any(cell for cell in row if cell and str(cell).strip()):
+            return max(1, i)
+    
+    # 默认策略：前3行作为表头
+    return min(3, len(data) // 2)
+
 def create_sheet(wb, sheet_name, data):
     """创建单个sheet"""
     # 清理sheet名称（Excel sheet名称限制）
@@ -96,8 +159,9 @@ def create_sheet(wb, sheet_name, data):
     zebra_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
     
     if isinstance(data, list) and len(data) > 0:
-        # 如果是列表，第一行作为表头
+        # 如果是列表，检查第一行是否为字典（单层表头）还是列表（多层表头）
         if isinstance(data[0], dict):
+            # 单层表头：字典列表格式
             headers = list(data[0].keys())
             
             # 写入表头
@@ -118,6 +182,48 @@ def create_sheet(wb, sheet_name, data):
                 
                 for col, header in enumerate(headers, 1):
                     cell = ws.cell(row=row, column=col, value=row_data.get(header, ""))
+                    cell.alignment = data_alignment
+                    cell.border = thin_border
+                    if row_fill:
+                        cell.fill = row_fill
+        elif isinstance(data[0], list):
+            # 多层表头：二维数组格式
+            # 智能识别表头行数：通过分析数据模式来区分表头和数据
+            header_rows = detect_header_rows(data)
+            
+            # 写入多层表头（保持深蓝色表头样式）
+            for header_row_idx in range(header_rows):
+                row_data = data[header_row_idx]
+                for col, cell_value in enumerate(row_data, 1):
+                    # 确保单元格值是字符串或数字，不是列表
+                    if isinstance(cell_value, list):
+                        cell_value = str(cell_value)
+                    elif cell_value is None:
+                        cell_value = ""
+                    cell = ws.cell(row=header_row_idx + 1, column=col, value=cell_value)
+                    # 应用表头样式：深蓝底 + 白字 + 加粗
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = header_alignment
+                    cell.border = thin_border
+                
+                # 设置表头行高（保持一致）
+                ws.row_dimensions[header_row_idx + 1].height = 22
+            
+            # 写入数据行（保持斑马条纹样式）
+            data_start_row = header_rows + 1
+            for row_idx, row_data in enumerate(data[header_rows:], data_start_row):
+                # 斑马条纹：偶数行添加浅灰背景（与单层表头完全相同的逻辑）
+                row_fill = zebra_fill if row_idx % 2 == 0 else None
+                
+                for col, cell_value in enumerate(row_data, 1):
+                    # 确保单元格值是字符串或数字，不是列表
+                    if isinstance(cell_value, list):
+                        cell_value = str(cell_value)
+                    elif cell_value is None:
+                        cell_value = ""
+                    cell = ws.cell(row=row_idx, column=col, value=cell_value)
+                    # 应用数据样式：垂直居中，文本自动换行，细边框
                     cell.alignment = data_alignment
                     cell.border = thin_border
                     if row_fill:

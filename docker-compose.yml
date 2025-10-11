@@ -4,7 +4,7 @@ services:
   excel-service:
     build: .
     ports:
-      - "5015:5014"
+      - "5014:5014"
     environment:
       - S3_BUCKET=excel-files
       - S3_REGION=us-east-1
